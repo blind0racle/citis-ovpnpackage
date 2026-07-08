@@ -1,0 +1,29 @@
+{
+  "server": {
+    "remote_ip": "85.142.162.127",
+    "remote_port": 2094,
+    "vpn_subnet": "10.80.14.0",
+    "vpn_netmask": "255.255.255.0",
+    "ca_password": "Dbp4ynbZ",
+    "routes": [
+      "10.10.11.0 255.255.255.0",
+      "10.20.11.0 255.255.255.0",
+      "10.40.0.0 255.255.0.0",
+      "213.208.189.6 255.255.255.255",
+      "213.208.189.16 255.255.255.255",
+      "213.208.189.61 255.255.255.255",
+      "213.208.189.62 255.255.255.255",
+      "213.208.189.102 255.255.255.255",
+      "213.208.189.105 255.255.255.255",
+      "10.20.18.11 255.255.255.255",
+      "10.20.4.2 255.255.255.255"
+    ],
+    "easyrsa_dir": "/etc/easy-rsa",
+    "openvpn_dir": "/etc/openvpn",
+    "client_dir": "/etc/openvpn/client",
+    "ccd_dir": "/etc/openvpn/server/ccd",
+    "keys_dir": "/etc/openvpn/server/keys",
+    "admin_base_dir": "/home/administrator",
+    "archive_base_dir": "/home/archive"
+  }
+}
