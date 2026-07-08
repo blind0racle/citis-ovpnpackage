@@ -3,23 +3,55 @@ import subprocess
 import shutil
 import sys
 import getpass
-from . import covpn_config
-from .covpn_env import check_environment
+import covpn_config
+from covpn_env import check_environment
 
 class UserAddError(Exception):
     pass
 
-# (copy the transliteration and password‑mangling functions from ovpnadd.py)
-# I'll include them here for brevity – they are identical.
+# --- transliteration functions (unchanged) ---
 first_sequence = "qwertyuiop[]asdfghjkl;'\\zxcvbnm,./QWERTYUIOP{}ASDFGHJKL:\"|ZXCVBNM<>?"
 second_sequence = "йцукенгшщзхъфывапролджэ\\ячсмитьбю.ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭ/ЯЧСМИТЬБЮ,"
 to_russian_dict = {first_sequence[i]: second_sequence[i] for i in range(len(first_sequence))}
 to_qwerty_dict = {second_sequence[i]: first_sequence[i] for i in range(len(second_sequence))}
 
-def detect_language(text): ...
-def text_translit(text): ...
-def replace_vowels(word): ...
-# (full functions as in original)
+def detect_language(text):
+    if any(char in second_sequence for char in text):
+        return "russian"
+    elif any(char in first_sequence for char in text):
+        return "qwerty"
+    return "unknown"
+
+def text_translit(text):
+    lang = detect_language(text)
+    if lang == "russian":
+        return "".join(to_qwerty_dict.get(char, char) for char in text)
+    elif lang == "qwerty":
+        return "".join(to_russian_dict.get(char, char) for char in text)
+    return text
+
+def replace_vowels(word):
+    replacements = {'а':'4','А':'4','о':'0','О':'0','е':'3','Е':'3','и':'1','И':'1','у':'7','У':'7'}
+    priority = {'о':1,'а':2,'е':3,'и':4,'у':5}
+    vowel_count = {}
+    for char in word:
+        if char.lower() in 'аеёиоуыэюя':
+            vowel_count[char.lower()] = vowel_count.get(char.lower(), 0) + 1
+    highest_priority_char = None
+    highest_priority = float('inf')
+    for char, cnt in vowel_count.items():
+        if cnt > 1 and priority[char] < highest_priority:
+            highest_priority = priority[char]
+            highest_priority_char = char
+    result = []
+    for char in word:
+        if char.lower() == highest_priority_char:
+            char = replacements.get(char, char)
+        result.append(char)
+    if result:
+        result[0] = result[0].upper()
+        result[-1] = result[-1].upper()
+    return ''.join(result)
 
 def get_next_ip(cfg):
     ccd_dir = cfg['server']['ccd_dir']
@@ -87,7 +119,6 @@ def add_user(username, password_input, cfg):
         shutil.copy(os.path.join(cfg['server']['keys_dir'], 'ca.crt'), client_dir)
         shutil.copy(os.path.join(cfg['server']['keys_dir'], 'tls.key'), client_dir)
 
-        # Build .ovpn
         ovpn_content = f"""client
 dev tun
 proto udp
@@ -117,19 +148,15 @@ verb 3
         with open(ovpn_path, 'w') as f:
             f.write(ovpn_content)
 
-        # Admin dir
         admin_dir = os.path.join(cfg['server']['admin_base_dir'], username)
         shutil.copytree(client_dir, admin_dir)
         subprocess.check_call(['chmod', '-R', '777', admin_dir])
 
-        # Login details
         login_path = os.path.join(admin_dir, 'данные для входа.txt')
         with open(login_path, 'w') as f:
             f.write(f"{username}\n{password_nomorph}")
 
-        # CCD
-        ccd_dir = cfg['server']['ccd_dir']
-        ccd_path = os.path.join(ccd_dir, username)
+        ccd_path = os.path.join(cfg['server']['ccd_dir'], username)
         ccd_content = f"ifconfig-push {cfg['server']['vpn_subnet']}.{ip_integer} {cfg['server']['vpn_netmask']}\n"
         for route in cfg['server']['routes']:
             ccd_content += f'push "route {route}"\n'

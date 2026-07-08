@@ -1,7 +1,8 @@
 import os
 import subprocess
 import glob
-from . import covpn_config
+import re
+import covpn_config
 
 def list_users_by_ip(cfg):
     ccd_dir = cfg['server']['ccd_dir']
@@ -25,12 +26,9 @@ def list_users_by_ip(cfg):
         print(f"{u:<18} {ip}")
 
 def show_access(cfg, target):
-    # Determine if target is IP or username
     if re.match(r'^\d+\.\d+\.\d+\.\d+$', target):
-        # IP
         ip = target
     else:
-        # username – find its IP from CCD
         ccd_path = os.path.join(cfg['server']['ccd_dir'], target)
         if not os.path.exists(ccd_path):
             print(f"User {target} not found.")
@@ -43,9 +41,7 @@ def show_access(cfg, target):
             else:
                 print("Could not determine IP for this user.")
                 return
-    # Now show iptables rules for this IP and subnet
     subnet = cfg['server']['vpn_subnet'] + '/24'
     print(f"Access rules for IP {ip} (including subnet {subnet}):")
-    # Use iptables -L -n | grep <ip> etc.
-    # For simplicity, we'll show a raw output
-    subprocess.run(['iptables', '-L', '-n'] | grep -E f"{ip}|{subnet}", shell=True)
+    cmd = f"iptables -L -n | grep -E '{ip}|{subnet}'"
+    subprocess.run(cmd, shell=True)

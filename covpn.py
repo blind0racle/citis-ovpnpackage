@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 import sys
-import argparse
 import os
+import argparse
+
+# Add installation directory to Python path so we can import modules
+COVPN_DIR = "/opt/covpn"
+if COVPN_DIR not in sys.path:
+    sys.path.insert(0, COVPN_DIR)
 
 import covpn_config
 import covpn_env
@@ -13,13 +18,11 @@ def main():
     parser = argparse.ArgumentParser(
         prog='covpn',
         description='OpenVPN management tool',
-        add_help=False  # we handle -h/--help ourselves
+        add_help=False
     )
 
-    # Global options
     parser.add_argument('--config', help='Path to config file (default: /etc/covpn/config.json)')
 
-    # Mutually exclusive mode selection (short = lower‑case)
     mode_group = parser.add_mutually_exclusive_group(required=False)
     mode_group.add_argument('-a', '--add', action='store_true', help='Add users (interactive or with -b)')
     mode_group.add_argument('-r', '--ren', action='store_true', help='Renew certificates (interactive or with -b)')
@@ -27,7 +30,6 @@ def main():
     mode_group.add_argument('-i', '--info', action='store_true', help='Show information')
     mode_group.add_argument('-h', '--help', action='store_true', help='Show this help message')
 
-    # Additional flags
     parser.add_argument('-b', '--batch', nargs='+', metavar='USERNAME',
                         help='Batch usernames (for --add or --ren)')
     parser.add_argument('-l', '--list', choices=['w', 'm', 'q', 'cl10', 'cl25'],
@@ -36,10 +38,7 @@ def main():
     parser.add_argument('--run', action='store_true', help='Check and fix environment (for --env)')
     parser.add_argument('-u', '--users', action='store_true', help='List all users with IPs (for --info)')
     parser.add_argument('-A', '--access', metavar='TARGET', help='Show access rules for username or IP (for --info)')
-    # Note: -A is uppercase to avoid conflict with -a, but you can change to something else if you want.
-    # We'll keep -A for access.
 
-    # If no arguments, show help
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
@@ -54,7 +53,6 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    # Validate flag combinations
     if args.add:
         if args.list or args.fix or args.run or args.users or args.access:
             parser.error('--list, --fix, --run, --users, --access are not allowed with --add')
@@ -90,7 +88,7 @@ def main():
     elif args.env:
         if args.list or args.batch or args.users or args.access:
             parser.error('--list, --batch, --users, --access are not allowed with --env')
-        cfg = covpn_config.load_config(args.config)  # not strictly needed
+        cfg = covpn_config.load_config(args.config)
         if args.fix or args.run:
             fix = args.fix or args.run
             if args.run:
