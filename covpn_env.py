@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 import shutil
-from . import covpn_config
+import covpn_config
 
 def check_environment(fix=False):
     cfg = covpn_config.get_config()

@@ -4,28 +4,44 @@ import shutil
 import datetime
 import glob
 import re
-from . import covpn_config
+import covpn_config
 
 def get_cert_expiry(cert_path):
-    # same as original
-    ...
+    try:
+        output = subprocess.check_output(
+            ['openssl', 'x509', '-enddate', '-noout', '-in', cert_path],
+            text=True
+        ).strip()
+        match = re.search(r'notAfter=(.*)', output)
+        if not match:
+            return None
+        date_str = match.group(1).strip()
+        parts = date_str.split()
+        month = parts[0]
+        day = parts[1].strip()
+        time = parts[2]
+        year = parts[3]
+        dt_str = f"{month} {day} {time} {year}"
+        return datetime.datetime.strptime(dt_str, "%b %d %H:%M:%S %Y")
+    except Exception as e:
+        print(f"Error reading expiry from {cert_path}: {e}")
+        return None
 
 def get_all_cert_expiries(cfg):
     cert_dir = os.path.join(cfg['server']['easyrsa_dir'], 'pki', 'issued')
     cert_files = glob.glob(os.path.join(cert_dir, '*.crt'))
     result = {}
-    for path in cert_files:
-        un = os.path.splitext(os.path.basename(path))[0]
-        exp = get_cert_expiry(path)
-        if exp:
-            result[un] = exp
+    for cert_path in cert_files:
+        username = os.path.splitext(os.path.basename(cert_path))[0]
+        expiry = get_cert_expiry(cert_path)
+        if expiry:
+            result[username] = expiry
     return result
 
 def revoke_renew_user(username, cfg):
     client_dir = os.path.join(cfg['server']['client_dir'], username)
     admin_dir = os.path.join(cfg['server']['admin_base_dir'], username)
 
-    # Preserve login
     login_path = os.path.join(admin_dir, 'данные для входа.txt')
     login_content = None
     if os.path.exists(login_path):
@@ -38,16 +54,12 @@ def revoke_renew_user(username, cfg):
     os.chdir(cfg['server']['easyrsa_dir'])
     ca_pass = cfg['server']['ca_password']
 
-    # Revoke
     subprocess.run(['./easyrsa', f'--passin=pass:{ca_pass}', 'revoke', username],
                    input='yes\n', text=True, check=True)
-    # Gen CRL
     subprocess.run(['./easyrsa', 'gen-crl'], check=True)
-    # Copy CRL
     if os.path.exists('pki/crl.pem'):
         shutil.copy('pki/crl.pem', os.path.join(cfg['server']['keys_dir'], 'crl.pem'))
 
-    # Delete old files
     for f in ['pki/reqs', 'pki/private', 'pki/issued']:
         p = os.path.join(f, f'{username}.*')
         for file in glob.glob(p):
@@ -57,16 +69,13 @@ def revoke_renew_user(username, cfg):
         if os.path.exists(p):
             os.remove(p)
 
-    # Build new
     subprocess.run(['./easyrsa', f'--passin=pass:{ca_pass}', 'build-client-full', username, 'nopass'],
                    input='yes\n', text=True, check=True)
 
-    # Copy new
     os.makedirs(client_dir, exist_ok=True)
     shutil.copy(os.path.join('pki', 'issued', f'{username}.crt'), client_dir)
     shutil.copy(os.path.join('pki', 'private', f'{username}.key'), client_dir)
 
-    # Refresh admin dir
     if os.path.exists(admin_dir):
         shutil.rmtree(admin_dir)
     os.makedirs(admin_dir, exist_ok=True)
@@ -79,8 +88,6 @@ def revoke_renew_user(username, cfg):
             f.write(login_content)
     subprocess.check_call(['chown', '-R', 'administrator:administrator', admin_dir])
     subprocess.check_call(['chmod', '-R', '777', admin_dir])
-
-    # Restart OpenVPN (optional – we keep it)
     subprocess.check_call(['systemctl', 'restart', 'openvpn@server'])
     print(f"✓ Renewed {username}")
 
@@ -88,28 +95,39 @@ def list_expirations(option, cfg):
     expiries = get_all_cert_expiries(cfg)
     now = datetime.datetime.utcnow()
     items = [(u, (exp-now).days) for u, exp in expiries.items()]
-    filtered = []
+
+    if not items:
+        print("No certificates found.")
+        return
+
+    # Filter
     if option == 'w':
         filtered = [(u,d) for u,d in items if 0 <= d <= 7]
-        title = "expiring in ≤7 days"
+        title = "expiring within 7 days"
     elif option == 'm':
         filtered = [(u,d) for u,d in items if 0 <= d <= 30]
-        title = "expiring in ≤30 days"
+        title = "expiring within 30 days"
     elif option == 'q':
         filtered = [(u,d) for u,d in items if 0 <= d <= 120]
-        title = "expiring in ≤120 days"
+        title = "expiring within 120 days"
     elif option == 'cl10':
         filtered = sorted([(u,d) for u,d in items if d>=0], key=lambda x: x[1])[:10]
-        title = "10 closest"
+        title = "10 closest expirations"
     elif option == 'cl25':
         filtered = sorted([(u,d) for u,d in items if d>=0], key=lambda x: x[1])[:25]
-        title = "25 closest"
+        title = "25 closest expirations"
     else:
         print("Invalid list option")
         return
+
     if not filtered:
-        print("No users match.")
+        print("No users match the criteria.")
         return
+
     print(f"\n{title}:")
+    print("-" * 60)
+    print(f"{'Username':<20} {'Days Left'}")
+    print("-" * 60)
     for u, d in filtered:
-        print(f"{u:20} {d} days")
+        print(f"{u:<20} {d}")
+    print("-" * 60)
