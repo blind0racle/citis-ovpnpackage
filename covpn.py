@@ -3,7 +3,7 @@ import sys
 import os
 import argparse
 
-# Add installation directory to Python path so we can import modules
+# Add installation directory to Python path
 COVPN_DIR = "/opt/covpn"
 if COVPN_DIR not in sys.path:
     sys.path.insert(0, COVPN_DIR)
@@ -22,9 +22,11 @@ def main():
     )
 
     parser.add_argument('--config', help='Path to config file (default: /etc/covpn/config.json)')
+    parser.add_argument('-v', '--version', action='store_true', help='Show version and exit')
 
     mode_group = parser.add_mutually_exclusive_group(required=False)
-    mode_group.add_argument('-a', '--add', action='store_true', help='Add users (interactive or with -b)')
+    mode_group.add_argument('-a', '--add', nargs='?', const=True, default=False,
+                            help='Add users. Optionally specify username (e.g., covpn -a john)')
     mode_group.add_argument('-r', '--ren', action='store_true', help='Renew certificates (interactive or with -b)')
     mode_group.add_argument('-e', '--env', action='store_true', help='Environment management')
     mode_group.add_argument('-i', '--info', action='store_true', help='Show information')
@@ -39,11 +41,18 @@ def main():
     parser.add_argument('-u', '--users', action='store_true', help='List all users with IPs (for --info)')
     parser.add_argument('-A', '--access', metavar='TARGET', help='Show access rules for username or IP (for --info)')
 
+    # If no arguments, show help
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
 
     args = parser.parse_args()
+
+    # Version check
+    if args.version:
+        version = covpn_config.get_version()
+        print(f"covpn version {version}")
+        sys.exit(0)
 
     if args.help:
         parser.print_help()
@@ -60,13 +69,16 @@ def main():
         if not covpn_env.check_environment(fix=False):
             print("Environment not ready. Run 'covpn -e --fix' first.")
             sys.exit(1)
+
+        username = args.add if isinstance(args.add, str) else None
+
         if args.batch:
             success, failed = covpn_add.add_batch(args.batch, cfg)
             print(f"Success: {len(success)}, Failed: {len(failed)}")
             if failed:
                 sys.exit(1)
         else:
-            covpn_add.add_interactive(cfg)
+            covpn_add.add_interactive(cfg, username)
 
     elif args.ren:
         if args.fix or args.run or args.users or args.access:

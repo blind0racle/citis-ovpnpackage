@@ -26,3 +26,7 @@ def get_config():
     if _config is None:
         load_config()
     return _config
+
+def get_version():
+    cfg = get_config()
+    return cfg.get('version', 'unknown')

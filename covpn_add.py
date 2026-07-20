@@ -1,196 +1,127 @@
-import os
-import subprocess
-import shutil
+#!/usr/bin/env python3
 import sys
-import getpass
+import os
+import argparse
+
+# Add installation directory to Python path
+COVPN_DIR = "/opt/covpn"
+if COVPN_DIR not in sys.path:
+    sys.path.insert(0, COVPN_DIR)
+
 import covpn_config
-from covpn_env import check_environment
+import covpn_env
+import covpn_add
+import covpn_ren
+import covpn_info
 
-class UserAddError(Exception):
-    pass
+def main():
+    parser = argparse.ArgumentParser(
+        prog='covpn',
+        description='OpenVPN management tool',
+        add_help=False
+    )
 
-# --- transliteration functions (unchanged) ---
-first_sequence = "qwertyuiop[]asdfghjkl;'\\zxcvbnm,./QWERTYUIOP{}ASDFGHJKL:\"|ZXCVBNM<>?"
-second_sequence = "йцукенгшщзхъфывапролджэ\\ячсмитьбю.ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭ/ЯЧСМИТЬБЮ,"
-to_russian_dict = {first_sequence[i]: second_sequence[i] for i in range(len(first_sequence))}
-to_qwerty_dict = {second_sequence[i]: first_sequence[i] for i in range(len(second_sequence))}
+    parser.add_argument('--config', help='Path to config file (default: /etc/covpn/config.json)')
+    parser.add_argument('-v', '--version', action='store_true', help='Show version and exit')
 
-def detect_language(text):
-    if any(char in second_sequence for char in text):
-        return "russian"
-    elif any(char in first_sequence for char in text):
-        return "qwerty"
-    return "unknown"
+    mode_group = parser.add_mutually_exclusive_group(required=False)
+    mode_group.add_argument('-a', '--add', nargs='?', const=True, default=False,
+                            help='Add users. Optionally specify username (e.g., covpn -a john)')
+    mode_group.add_argument('-r', '--ren', action='store_true', help='Renew certificates (interactive or with -b)')
+    mode_group.add_argument('-e', '--env', action='store_true', help='Environment management')
+    mode_group.add_argument('-i', '--info', action='store_true', help='Show information')
+    mode_group.add_argument('-h', '--help', action='store_true', help='Show this help message')
 
-def text_translit(text):
-    lang = detect_language(text)
-    if lang == "russian":
-        return "".join(to_qwerty_dict.get(char, char) for char in text)
-    elif lang == "qwerty":
-        return "".join(to_russian_dict.get(char, char) for char in text)
-    return text
+    parser.add_argument('-b', '--batch', nargs='+', metavar='USERNAME',
+                        help='Batch usernames (for --add or --ren)')
+    parser.add_argument('-l', '--list', choices=['w', 'm', 'q', 'cl10', 'cl25'],
+                        help='List users by expiry (for --ren)')
+    parser.add_argument('--fix', action='store_true', help='Fix environment (for --env)')
+    parser.add_argument('--run', action='store_true', help='Check and fix environment (for --env)')
+    parser.add_argument('-u', '--users', action='store_true', help='List all users with IPs (for --info)')
+    parser.add_argument('-A', '--access', metavar='TARGET', help='Show access rules for username or IP (for --info)')
 
-def replace_vowels(word):
-    replacements = {'а':'4','А':'4','о':'0','О':'0','е':'3','Е':'3','и':'1','И':'1','у':'7','У':'7'}
-    priority = {'о':1,'а':2,'е':3,'и':4,'у':5}
-    vowel_count = {}
-    for char in word:
-        if char.lower() in 'аеёиоуыэюя':
-            vowel_count[char.lower()] = vowel_count.get(char.lower(), 0) + 1
-    highest_priority_char = None
-    highest_priority = float('inf')
-    for char, cnt in vowel_count.items():
-        if cnt > 1 and priority[char] < highest_priority:
-            highest_priority = priority[char]
-            highest_priority_char = char
-    result = []
-    for char in word:
-        if char.lower() == highest_priority_char:
-            char = replacements.get(char, char)
-        result.append(char)
-    if result:
-        result[0] = result[0].upper()
-        result[-1] = result[-1].upper()
-    return ''.join(result)
+    # If no arguments, show help
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(0)
 
-def get_next_ip(cfg):
-    ccd_dir = cfg['server']['ccd_dir']
-    try:
-        last_ip_str = subprocess.check_output(
-            f'grep "ifconfig-push" {ccd_dir}/* | awk \'{{print $2}}\' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | awk -F "." \'{{print $4}}\' | tail -1',
-            shell=True, text=True
-        ).strip()
-        if last_ip_str:
-            last_ip = int(last_ip_str)
-        else:
-            last_ip = 0
-        return last_ip + 1
-    except:
-        return 1
+    args = parser.parse_args()
 
-def cleanup_user(username, cfg):
-    paths = [
-        os.path.join(cfg['server']['client_dir'], username),
-        os.path.join(cfg['server']['admin_base_dir'], username),
-        os.path.join(cfg['server']['ccd_dir'], username),
-        os.path.join(cfg['server']['easyrsa_dir'], 'pki', 'issued', f'{username}.crt'),
-        os.path.join(cfg['server']['easyrsa_dir'], 'pki', 'private', f'{username}.key'),
-        os.path.join(cfg['server']['easyrsa_dir'], 'pki', 'reqs', f'{username}.req'),
-    ]
-    for p in paths:
-        if os.path.exists(p):
-            if os.path.isdir(p):
-                shutil.rmtree(p, ignore_errors=True)
-            else:
-                os.remove(p)
-            print(f"   Cleaned up: {p}")
-    try:
-        subprocess.check_call(['userdel', username])
-        print(f"   Removed system user: {username}")
-    except:
-        pass
+    # Version check
+    if args.version:
+        version = covpn_config.get_version()
+        print(f"covpn version {version}")
+        sys.exit(0)
 
-def add_user(username, password_input, cfg):
-    password_nomorph = replace_vowels(password_input)
-    final_password = text_translit(password_nomorph)
-    ip_integer = get_next_ip(cfg)
+    if args.help:
+        parser.print_help()
+        sys.exit(0)
 
-    try:
-        print(f"Adding user {username} ...")
-        subprocess.check_call(['useradd', username])
-        proc = subprocess.Popen(['passwd', username], stdin=subprocess.PIPE, text=True)
-        proc.communicate(input=f"{final_password}\n{final_password}\n")
-        if proc.returncode != 0:
-            raise UserAddError("passwd failed")
-        subprocess.check_call(['usermod', username, '-s', '/sbin/nologin'])
-
-        os.chdir(cfg['server']['easyrsa_dir'])
-        os.environ["CA_PASSWORD"] = cfg['server']['ca_password']
-        subprocess.run(
-            ['./easyrsa', '--passin=pass:{}'.format(os.environ['CA_PASSWORD']),
-             'build-client-full', username, 'nopass'],
-            input="yes\n", text=True, check=True
-        )
-
-        client_dir = os.path.join(cfg['server']['client_dir'], username)
-        os.makedirs(client_dir, exist_ok=True)
-        shutil.copy(os.path.join('pki', 'issued', f'{username}.crt'), client_dir)
-        shutil.copy(os.path.join('pki', 'private', f'{username}.key'), client_dir)
-        shutil.copy(os.path.join(cfg['server']['keys_dir'], 'ca.crt'), client_dir)
-        shutil.copy(os.path.join(cfg['server']['keys_dir'], 'tls.key'), client_dir)
-
-        ovpn_content = f"""client
-dev tun
-proto udp
-remote {cfg['server']['remote_ip']} {cfg['server']['remote_port']}
-resolv-retry infinite
-auth-nocache
-nobind
-persist-key
-persist-tun
-
-cipher AES-256-GCM
-data-ciphers AES-256-GCM
-auth SHA256
-auth-user-pass
-auth-nocache
-
-comp-lzo
-
-ca ca.crt
-cert {username}.crt
-key {username}.key
-tls-crypt tls.key
-remote-cert-tls server
-verb 3
-"""
-        ovpn_path = os.path.join(client_dir, f'{username}.ovpn')
-        with open(ovpn_path, 'w') as f:
-            f.write(ovpn_content)
-
-        admin_dir = os.path.join(cfg['server']['admin_base_dir'], username)
-        shutil.copytree(client_dir, admin_dir)
-        subprocess.check_call(['chmod', '-R', '777', admin_dir])
-
-        login_path = os.path.join(admin_dir, 'данные для входа.txt')
-        with open(login_path, 'w') as f:
-            f.write(f"{username}\n{password_nomorph}")
-
-        ccd_path = os.path.join(cfg['server']['ccd_dir'], username)
-        ccd_content = f"ifconfig-push {cfg['server']['vpn_subnet']}.{ip_integer} {cfg['server']['vpn_netmask']}\n"
-        for route in cfg['server']['routes']:
-            ccd_content += f'push "route {route}"\n'
-        with open(ccd_path, 'w') as f:
-            f.write(ccd_content)
-
-        print(f"Client {username} added. OVPN: {ovpn_path}")
-    except Exception as e:
-        print(f"Error: {e}")
-        cleanup_user(username, cfg)
-        raise UserAddError(f"Failed to create {username}")
-
-def add_batch(usernames, cfg):
-    success, failed = [], []
-    for un in usernames:
-        print(f"\n--- {un} ---")
-        pw = getpass.getpass(f"Password for {un}: ")
-        cw = getpass.getpass("Confirm: ")
-        if pw != cw:
-            print("Passwords do not match. Skipping.")
-            failed.append(un)
-            continue
-        try:
-            add_user(un, pw, cfg)
-            success.append(un)
-        except UserAddError:
-            failed.append(un)
-    return success, failed
-
-def add_interactive(cfg):
-    un = input("Username: ")
-    pw = getpass.getpass("Password: ")
-    cw = getpass.getpass("Confirm: ")
-    if pw != cw:
-        print("Passwords do not match.")
+    if not (args.add or args.ren or args.env or args.info):
+        parser.print_help()
         sys.exit(1)
-    add_user(un, pw, cfg)
+
+    if args.add:
+        if args.list or args.fix or args.run or args.users or args.access:
+            parser.error('--list, --fix, --run, --users, --access are not allowed with --add')
+        cfg = covpn_config.load_config(args.config)
+        if not covpn_env.check_environment(fix=False):
+            print("Environment not ready. Run 'covpn -e --fix' first.")
+            sys.exit(1)
+
+        username = args.add if isinstance(args.add, str) else None
+
+        if args.batch:
+            success, failed = covpn_add.add_batch(args.batch, cfg)
+            print(f"Success: {len(success)}, Failed: {len(failed)}")
+            if failed:
+                sys.exit(1)
+        else:
+            covpn_add.add_interactive(cfg, username)
+
+    elif args.ren:
+        if args.fix or args.run or args.users or args.access:
+            parser.error('--fix, --run, --users, --access are not allowed with --ren')
+        cfg = covpn_config.load_config(args.config)
+        if args.list:
+            covpn_ren.list_expirations(args.list, cfg)
+        elif args.batch:
+            for username in args.batch:
+                covpn_ren.revoke_renew_user(username, cfg)
+            print("All renewed.")
+        else:
+            username = input("Enter username: ").strip()
+            if username:
+                covpn_ren.revoke_renew_user(username, cfg)
+            else:
+                print("Username cannot be empty.")
+
+    elif args.env:
+        if args.list or args.batch or args.users or args.access:
+            parser.error('--list, --batch, --users, --access are not allowed with --env')
+        cfg = covpn_config.load_config(args.config)
+        if args.fix or args.run:
+            fix = args.fix or args.run
+            if args.run:
+                if not covpn_env.check_environment(fix=False):
+                    print("Attempting to fix...")
+                    covpn_env.check_environment(fix=True)
+            else:
+                covpn_env.check_environment(fix=fix)
+        else:
+            covpn_env.check_environment(fix=False)
+
+    elif args.info:
+        if args.list or args.batch or args.fix or args.run:
+            parser.error('--list, --batch, --fix, --run are not allowed with --info')
+        cfg = covpn_config.load_config(args.config)
+        if args.users:
+            covpn_info.list_users_by_ip(cfg)
+        elif args.access:
+            covpn_info.show_access(cfg, args.access)
+        else:
+            parser.error('--info requires either --users or --access')
+
+if __name__ == '__main__':
+    main()
