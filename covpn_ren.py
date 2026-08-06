@@ -60,10 +60,10 @@ def revoke_renew_user(username, cfg):
     cmd_revoke.extend(['revoke', username])
     subprocess.run(cmd_revoke, input='yes\n', text=True, check=True)
 
-    subprocess.run(['./easyrsa', 'gen-crl'], check=True)
-
-    if os.path.exists('pki/crl.pem'):
-        shutil.copy('pki/crl.pem', os.path.join(cfg['server']['keys_dir'], 'crl.pem'))
+    # CRL НЕ ГЕНЕРИРУЕМ, НЕ КОПИРУЕМ, НЕ РЕСТАРТАЕМ
+    # subprocess.run(['./easyrsa', 'gen-crl'], check=True)
+    # if os.path.exists('pki/crl.pem'):
+    #     shutil.copy('pki/crl.pem', os.path.join(cfg['server']['keys_dir'], 'crl.pem'))
 
     for f in ['pki/reqs', 'pki/private', 'pki/issued']:
         p = os.path.join(f, f'{username}.*')
@@ -97,8 +97,9 @@ def revoke_renew_user(username, cfg):
 
     subprocess.check_call(['chown', '-R', 'administrator:administrator', admin_dir])
     subprocess.check_call(['chmod', '-R', '777', admin_dir])
-    subprocess.check_call(['systemctl', 'restart', 'openvpn@server'])
-    print(f"✓ Renewed {username}")
+    # РЕСТАРТ УБРАН
+    # subprocess.check_call(['systemctl', 'restart', 'openvpn@server'])
+    print(f"✓ Renewed {username} (CRL update skipped)")
 
 def list_expirations(option, cfg):
     expiries = get_all_cert_expiries(cfg)
