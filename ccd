@@ -1,0 +1,64 @@
+#!/bin/bash
+# ccd – list/view OpenVPN CCD files
+
+CCD_DIR="/etc/openvpn/server/ccd"
+
+if [ ! -d "$CCD_DIR" ]; then
+    echo "Error: CCD directory not found: $CCD_DIR" >&2
+    exit 1
+fi
+
+# Function: list all users with IPs
+list_users() {
+    local i=1
+    for f in "$CCD_DIR"/*; do
+        if [ -f "$f" ]; then
+            username=$(basename "$f")
+            ip=$(grep -m1 '^ifconfig-push' "$f" | awk '{print $2}' 2>/dev/null)
+            if [ -n "$ip" ]; then
+                echo "$i. $username - $ip"
+            else
+                echo "$i. $username - (no IP)"
+            fi
+            ((i++))
+        fi
+    done
+}
+
+# Function: view specific CCD file
+view_user() {
+    local target="$1"
+    local file=""
+
+    # If target is a number, get the Nth file
+    if [[ "$target" =~ ^[0-9]+$ ]]; then
+        file=$(ls -1 "$CCD_DIR"/* 2>/dev/null | sed -n "${target}p")
+    else
+        # Otherwise treat as username
+        file="$CCD_DIR/$target"
+    fi
+
+    if [ -z "$file" ] || [ ! -f "$file" ]; then
+        echo "Error: User not found: $target" >&2
+        exit 1
+    fi
+
+    echo "=== $(basename "$file") ==="
+    cat "$file"
+}
+
+# Main
+case "$1" in
+    ""|-h|--help)
+        echo "Usage: ccd [NUMBER|USERNAME]"
+        echo ""
+        echo "Without arguments: list all users with their IPs"
+        echo "With NUMBER: show CCD file for Nth user"
+        echo "With USERNAME: show CCD file for that user"
+        exit 0
+        ;;
+    *)
+        # If argument is a number or a string, try to view it
+        view_user "$1"
+        ;;
+esac

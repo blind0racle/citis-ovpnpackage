@@ -23,6 +23,8 @@ def main():
 
     parser.add_argument('--config', help='Path to config file (default: /etc/covpn/config.json)')
     parser.add_argument('-v', '--version', action='store_true', help='Show version and exit')
+    parser.add_argument('-c', '--config', action='store_true', help='Show covpn config file')
+    parser.add_argument('-sc', '--servconf', action='store_true', help='Show OpenVPN server config')
 
     mode_group = parser.add_mutually_exclusive_group(required=False)
     mode_group.add_argument('-a', '--add', nargs='?', const=True, default=False,
@@ -46,6 +48,27 @@ def main():
         sys.exit(0)
 
     args = parser.parse_args()
+
+    # Show config if requested
+    if args.config:
+        cfg_path = args.config or "/etc/covpn/config.json"
+        if os.path.exists(cfg_path):
+            print(f"=== {cfg_path} ===")
+            with open(cfg_path, 'r') as f:
+                print(f.read())
+        else:
+            print(f"Config file not found: {cfg_path}")
+        sys.exit(0)
+
+    if args.servconf:
+        server_conf = "/etc/openvpn/server/server.conf"
+        if os.path.exists(server_conf):
+            print(f"=== {server_conf} ===")
+            with open(server_conf, 'r') as f:
+                print(f.read())
+        else:
+            print(f"Server config not found: {server_conf}")
+        sys.exit(0)
 
     if args.version:
         version = covpn_config.get_version()

@@ -23,6 +23,11 @@ install: check-root
 	ln -sf $(INSTALL_DIR)/covpn.py $(BIN_LINK)
 	@echo "Symlink created: $(BIN_LINK) -> $(INSTALL_DIR)/covpn.py"
 
+	# Install ccd script
+	cp -v ccd /usr/local/bin/ccd
+	chmod +x /usr/local/bin/ccd
+	@echo "ccd script installed: /usr/local/bin/ccd"
+
 	mkdir -p $(CONFIG_DIR)
 	if [ ! -f $(CONFIG_FILE) ]; then \
 		if [ -f config.json.example ]; then \
@@ -37,10 +42,12 @@ install: check-root
 
 	@echo "Installation complete."
 	@echo "You can now run: covpn --help"
+	@echo "You can now run: ccd --help"
 
 uninstall: check-root
 	@echo "Removing covpn..."
 	rm -f $(BIN_LINK)
+	rm -f /usr/local/bin/ccd
 	rm -rf $(INSTALL_DIR)
 	@echo "Note: Config file $(CONFIG_FILE) is kept."
 	@echo "To remove it, delete $(CONFIG_FILE) manually."
