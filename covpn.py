@@ -3,7 +3,6 @@ import sys
 import os
 import argparse
 
-# Add installation directory to Python path
 COVPN_DIR = "/opt/covpn"
 if COVPN_DIR not in sys.path:
     sys.path.insert(0, COVPN_DIR)
@@ -21,27 +20,28 @@ def main():
         add_help=False
     )
 
-    parser.add_argument('--config', help='Path to config file (default: /etc/covpn/config.json)')
+    parser.add_argument('--configpath', help='Path to config file (default: /etc/covpn/config.json)')
     parser.add_argument('-v', '--version', action='store_true', help='Show version and exit')
     parser.add_argument('-c', '--config', action='store_true', help='Show covpn config file')
     parser.add_argument('-sc', '--servconf', action='store_true', help='Show OpenVPN server config')
 
     mode_group = parser.add_mutually_exclusive_group(required=False)
     mode_group.add_argument('-a', '--add', nargs='?', const=True, default=False,
-                            help='Add users. Optionally specify username (e.g., covpn -a john)')
-    mode_group.add_argument('-r', '--ren', action='store_true', help='Renew certificates (interactive or with -b)')
+                            help='Add users. Optionally specify username')
+    mode_group.add_argument('-r', '--renew', action='store_true',
+                            help='Renew certificates (interactive or with -b)')
     mode_group.add_argument('-e', '--env', action='store_true', help='Environment management')
     mode_group.add_argument('-i', '--info', action='store_true', help='Show information')
     mode_group.add_argument('-h', '--help', action='store_true', help='Show this help message')
 
     parser.add_argument('-b', '--batch', nargs='+', metavar='USERNAME',
-                        help='Batch usernames (for --add or --ren)')
+                        help='Batch usernames (for --add or --renew)')
     parser.add_argument('-l', '--list', choices=['w', 'm', 'q', 'cl10', 'cl25'],
-                        help='List users by expiry (for --ren)')
-    parser.add_argument('--fix', action='store_true', help='Fix environment (for --env)')
+                        help='List users by expiry (for --renew)')
+    parser.add_argument('-f', '--fix', action='store_true', help='Fix environment (for --env)')
     parser.add_argument('--run', action='store_true', help='Check and fix environment (for --env)')
     parser.add_argument('-u', '--users', action='store_true', help='List all users with IPs (for --info)')
-    parser.add_argument('-A', '--access', metavar='TARGET', help='Show access rules for username or IP (for --info)')
+    parser.add_argument('-A', '--access', metavar='TARGET', help='Show access rules (for --info)')
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -49,9 +49,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Show config if requested
+    # Глобальные действия
     if args.config:
-        cfg_path = args.config or "/etc/covpn/config.json"
+        cfg_path = args.configpath or "/etc/covpn/config.json"
         if os.path.exists(cfg_path):
             print(f"=== {cfg_path} ===")
             with open(cfg_path, 'r') as f:
@@ -79,16 +79,16 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    if not (args.add or args.ren or args.env or args.info):
+    if not (args.add or args.renew or args.env or args.info):
         parser.print_help()
         sys.exit(1)
 
     if args.add:
         if args.list or args.fix or args.run or args.users or args.access:
             parser.error('--list, --fix, --run, --users, --access are not allowed with --add')
-        cfg = covpn_config.load_config(args.config)
+        cfg = covpn_config.load_config(args.configpath)
         if not covpn_env.check_environment(fix=False):
-            print("Environment not ready. Run 'covpn -e --fix' first.")
+            print("Environment not ready. Run 'covpn -e --run' first.")
             sys.exit(1)
 
         username = args.add if isinstance(args.add, str) else None
@@ -101,10 +101,10 @@ def main():
         else:
             covpn_add.add_interactive(cfg, username)
 
-    elif args.ren:
+    elif args.renew:
         if args.fix or args.run or args.users or args.access:
-            parser.error('--fix, --run, --users, --access are not allowed with --ren')
-        cfg = covpn_config.load_config(args.config)
+            parser.error('--fix, --run, --users, --access are not allowed with --renew')
+        cfg = covpn_config.load_config(args.configpath)
         if args.list:
             covpn_ren.list_expirations(args.list, cfg)
         elif args.batch:
@@ -121,7 +121,7 @@ def main():
     elif args.env:
         if args.list or args.batch or args.users or args.access:
             parser.error('--list, --batch, --users, --access are not allowed with --env')
-        cfg = covpn_config.load_config(args.config)
+        cfg = covpn_config.load_config(args.configpath)
         if args.fix or args.run:
             fix = args.fix or args.run
             if args.run:
@@ -136,7 +136,7 @@ def main():
     elif args.info:
         if args.list or args.batch or args.fix or args.run:
             parser.error('--list, --batch, --fix, --run are not allowed with --info')
-        cfg = covpn_config.load_config(args.config)
+        cfg = covpn_config.load_config(args.configpath)
         if args.users:
             covpn_info.list_users_by_ip(cfg)
         elif args.access:

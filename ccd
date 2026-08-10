@@ -8,7 +8,6 @@ if [ ! -d "$CCD_DIR" ]; then
     exit 1
 fi
 
-# Function: list all users with IPs
 list_users() {
     local i=1
     for f in "$CCD_DIR"/*; do
@@ -25,16 +24,13 @@ list_users() {
     done
 }
 
-# Function: view specific CCD file
 view_user() {
     local target="$1"
     local file=""
 
-    # If target is a number, get the Nth file
     if [[ "$target" =~ ^[0-9]+$ ]]; then
         file=$(ls -1 "$CCD_DIR"/* 2>/dev/null | sed -n "${target}p")
     else
-        # Otherwise treat as username
         file="$CCD_DIR/$target"
     fi
 
@@ -47,18 +43,18 @@ view_user() {
     cat "$file"
 }
 
-# Main
 case "$1" in
-    ""|-h|--help)
+    -h|--help)
         echo "Usage: ccd [NUMBER|USERNAME]"
         echo ""
         echo "Without arguments: list all users with their IPs"
         echo "With NUMBER: show CCD file for Nth user"
         echo "With USERNAME: show CCD file for that user"
-        exit 0
+        ;;
+    "")
+        list_users
         ;;
     *)
-        # If argument is a number or a string, try to view it
         view_user "$1"
         ;;
 esac
