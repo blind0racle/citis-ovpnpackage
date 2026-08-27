@@ -111,7 +111,7 @@ def add_user(username, password_input, cfg):
 
         cmd = ['./easyrsa']
         if ca_pass:
-            cmd.extend(['--passin', f'pass:{ca_pass}'])
+            cmd.append(f'--passin=pass:{ca_pass}')   # исправлено: с '='
         cmd.extend(['build-client-full', username, 'nopass'])
         subprocess.run(cmd, input='yes\n', text=True, check=True)
 

@@ -54,13 +54,15 @@ def revoke_renew_user(username, cfg):
     os.chdir(cfg['server']['easyrsa_dir'])
     ca_pass = cfg['server'].get('ca_password', '')
 
+    # Revoke
     cmd_revoke = ['./easyrsa']
     if ca_pass:
-        cmd_revoke.extend(['--passin', f'pass:{ca_pass}'])
+        cmd_revoke.append(f'--passin=pass:{ca_pass}')   # исправлено
     cmd_revoke.extend(['revoke', username])
     subprocess.run(cmd_revoke, input='yes\n', text=True, check=True)
 
-    # CRL НЕ ГЕНЕРИРУЕМ, НЕ КОПИРУЕМ, НЕ РЕСТАРТАЕМ
+    # CRL – не генерируем (по твоему желанию)
+    # Если хочешь генерировать – раскомментируй:
     # subprocess.run(['./easyrsa', 'gen-crl'], check=True)
     # if os.path.exists('pki/crl.pem'):
     #     shutil.copy('pki/crl.pem', os.path.join(cfg['server']['keys_dir'], 'crl.pem'))
@@ -74,9 +76,10 @@ def revoke_renew_user(username, cfg):
         if os.path.exists(p):
             os.remove(p)
 
+    # Build new
     cmd_build = ['./easyrsa']
     if ca_pass:
-        cmd_build.extend(['--passin', f'pass:{ca_pass}'])
+        cmd_build.append(f'--passin=pass:{ca_pass}')   # исправлено
     cmd_build.extend(['build-client-full', username, 'nopass'])
     subprocess.run(cmd_build, input='yes\n', text=True, check=True)
 
@@ -97,8 +100,7 @@ def revoke_renew_user(username, cfg):
 
     subprocess.check_call(['chown', '-R', 'administrator:administrator', admin_dir])
     subprocess.check_call(['chmod', '-R', '777', admin_dir])
-    # РЕСТАРТ УБРАН
-    # subprocess.check_call(['systemctl', 'restart', 'openvpn@server'])
+    # Рестарт убран
     print(f"✓ Renewed {username} (CRL update skipped)")
 
 def list_expirations(option, cfg):
