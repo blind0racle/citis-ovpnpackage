@@ -67,3 +67,5 @@ def check_environment(fix=False):
 
     print("\nRe‑checking environment...")
     return check_environment(fix=False)
+
+#stupid commit

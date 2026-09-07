@@ -196,3 +196,5 @@ def add_interactive(cfg, username=None):
 
     pw = input("Password: ")
     add_user(username, pw, cfg)
+
+#stupid commit

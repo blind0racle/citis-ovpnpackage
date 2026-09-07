@@ -142,3 +142,5 @@ def list_expirations(option, cfg):
     for u, d in filtered:
         print(f"{u:<20} {d}")
     print("-" * 60)
+
+#stupid commit

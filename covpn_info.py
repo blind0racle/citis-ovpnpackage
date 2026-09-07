@@ -45,3 +45,5 @@ def show_access(cfg, target):
     print(f"Access rules for IP {ip} (including subnet {subnet}):")
     cmd = f"iptables -L -n | grep -E '{ip}|{subnet}'"
     subprocess.run(cmd, shell=True)
+
+#stupid commit
