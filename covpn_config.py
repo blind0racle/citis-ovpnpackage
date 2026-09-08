@@ -30,5 +30,3 @@ def get_config():
 def get_version():
     cfg = get_config()
     return cfg.get('version', 'unknown')
-
-#stupid commit

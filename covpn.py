@@ -12,6 +12,7 @@ import covpn_env
 import covpn_add
 import covpn_ren
 import covpn_info
+import covpn_regenerate  # <-- NEW module
 
 def main():
     parser = argparse.ArgumentParser(
@@ -20,11 +21,13 @@ def main():
         add_help=False
     )
 
+    # Global options
     parser.add_argument('--configpath', help='Path to config file (default: /etc/covpn/config.json)')
     parser.add_argument('-v', '--version', action='store_true', help='Show version and exit')
     parser.add_argument('-c', '--config', action='store_true', help='Show covpn config file')
     parser.add_argument('-sc', '--servconf', action='store_true', help='Show OpenVPN server config')
 
+    # Mode group (mutually exclusive)
     mode_group = parser.add_mutually_exclusive_group(required=False)
     mode_group.add_argument('-a', '--add', nargs='?', const=True, default=False,
                             help='Add users. Optionally specify username')
@@ -32,10 +35,13 @@ def main():
                             help='Renew certificates (interactive or with -b)')
     mode_group.add_argument('-e', '--env', action='store_true', help='Environment management')
     mode_group.add_argument('-i', '--info', action='store_true', help='Show information')
+    mode_group.add_argument('--regenerate', action='store_true',
+                            help='Regenerate certificates and configs for users (post‑breach)')  # <-- NEW
     mode_group.add_argument('-h', '--help', action='store_true', help='Show this help message')
 
+    # Options that work with multiple modes
     parser.add_argument('-b', '--batch', nargs='+', metavar='USERNAME',
-                        help='Batch usernames (for --add or --renew)')
+                        help='Batch usernames (for --add, --renew, or --regenerate)')
     parser.add_argument('-l', '--list', choices=['w', 'm', 'q', 'cl10', 'cl25'],
                         help='List users by expiry (for --renew)')
     parser.add_argument('-f', '--fix', action='store_true', help='Fix environment (for --env)')
@@ -43,13 +49,20 @@ def main():
     parser.add_argument('-u', '--users', action='store_true', help='List all users with IPs (for --info)')
     parser.add_argument('-A', '--access', metavar='TARGET', help='Show access rules (for --info)')
 
+    # NEW options for --regenerate
+    parser.add_argument('--file', help='File with usernames (one per line) for batch operations (used with --regenerate)')
+    parser.add_argument('--passwords-file', help='File with username:password pairs (optional, used with --regenerate)')
+    parser.add_argument('--update-live', action='store_true',
+                        help='Update live client/admin directories (for --regenerate)')
+
+    # If no arguments, show help
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
 
     args = parser.parse_args()
 
-    # Глобальные действия
+    # --- Global actions (not tied to a mode) ---
     if args.config:
         cfg_path = args.configpath or "/etc/covpn/config.json"
         if os.path.exists(cfg_path):
@@ -79,14 +92,18 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    if not (args.add or args.renew or args.env or args.info):
+    # If no mode selected, show help
+    if not (args.add or args.renew or args.env or args.info or args.regenerate):
         parser.print_help()
         sys.exit(1)
 
+    # Load config once for all modes
+    cfg = covpn_config.load_config(args.configpath)
+
+    # --- Mode: ADD ---
     if args.add:
-        if args.list or args.fix or args.run or args.users or args.access:
-            parser.error('--list, --fix, --run, --users, --access are not allowed with --add')
-        cfg = covpn_config.load_config(args.configpath)
+        if args.list or args.fix or args.run or args.users or args.access or args.file or args.passwords_file or args.update_live:
+            parser.error('--list, --fix, --run, --users, --access, --file, --passwords-file, --update-live are not allowed with --add')
         if not covpn_env.check_environment(fix=False):
             print("Environment not ready. Run 'covpn -e --run' first.")
             sys.exit(1)
@@ -101,10 +118,10 @@ def main():
         else:
             covpn_add.add_interactive(cfg, username)
 
+    # --- Mode: RENEW ---
     elif args.renew:
-        if args.fix or args.run or args.users or args.access:
-            parser.error('--fix, --run, --users, --access are not allowed with --renew')
-        cfg = covpn_config.load_config(args.configpath)
+        if args.fix or args.run or args.users or args.access or args.file or args.passwords_file or args.update_live:
+            parser.error('--fix, --run, --users, --access, --file, --passwords-file, --update-live are not allowed with --renew')
         if args.list:
             covpn_ren.list_expirations(args.list, cfg)
         elif args.batch:
@@ -118,10 +135,10 @@ def main():
             else:
                 print("Username cannot be empty.")
 
+    # --- Mode: ENV ---
     elif args.env:
-        if args.list or args.batch or args.users or args.access:
-            parser.error('--list, --batch, --users, --access are not allowed with --env')
-        cfg = covpn_config.load_config(args.configpath)
+        if args.list or args.batch or args.users or args.access or args.file or args.passwords_file or args.update_live:
+            parser.error('--list, --batch, --users, --access, --file, --passwords-file, --update-live are not allowed with --env')
         if args.fix or args.run:
             fix = args.fix or args.run
             if args.run:
@@ -133,16 +150,25 @@ def main():
         else:
             covpn_env.check_environment(fix=False)
 
+    # --- Mode: INFO ---
     elif args.info:
-        if args.list or args.batch or args.fix or args.run:
-            parser.error('--list, --batch, --fix, --run are not allowed with --info')
-        cfg = covpn_config.load_config(args.configpath)
+        if args.list or args.batch or args.fix or args.run or args.file or args.passwords_file or args.update_live:
+            parser.error('--list, --batch, --fix, --run, --file, --passwords-file, --update-live are not allowed with --info')
         if args.users:
             covpn_info.list_users_by_ip(cfg)
         elif args.access:
             covpn_info.show_access(cfg, args.access)
         else:
             parser.error('--info requires either --users or --access')
+
+    # --- NEW Mode: REGENERATE ---
+    elif args.regenerate:
+        if args.list or args.fix or args.run or args.users or args.access:
+            parser.error('--list, --fix, --run, --users, --access are not allowed with --regenerate')
+        if not (args.batch or args.file):
+            parser.error('--regenerate requires --batch or --file')
+        # Pass all relevant arguments to the regenerate module
+        covpn_regenerate.main(args)
 
 if __name__ == '__main__':
     main()

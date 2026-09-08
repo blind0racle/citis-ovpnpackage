@@ -46,4 +46,3 @@ def show_access(cfg, target):
     cmd = f"iptables -L -n | grep -E '{ip}|{subnet}'"
     subprocess.run(cmd, shell=True)
 
-#stupid commit
