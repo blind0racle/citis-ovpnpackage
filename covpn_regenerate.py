@@ -128,7 +128,7 @@ auth SHA256
 auth-user-pass
 auth-nocache
 
-comp-lzo
+#comp-lzo
 
 ca ca.crt
 cert {username}.crt
