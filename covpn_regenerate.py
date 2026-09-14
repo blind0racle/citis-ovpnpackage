@@ -122,8 +122,8 @@ nobind
 persist-key
 persist-tun
 
-cipher AES-256-GCM
-data-ciphers AES-256-GCM
+#cipher AES-256-CBC
+data-ciphers AES-256-CBC
 auth SHA256
 auth-user-pass
 auth-nocache
