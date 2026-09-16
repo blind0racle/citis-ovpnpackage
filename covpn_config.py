@@ -3,6 +3,7 @@ import os
 import sys
 
 DEFAULT_CONFIG_PATH = "/etc/covpn/config.json"
+BACKUP_CONFIG_PATH = "~/citis-ovpnpackage/config.json"
 
 _config = None
 
@@ -28,5 +29,5 @@ def get_config():
     return _config
 
 def get_version():
-    cfg = get_config()
+    cfg = get_config(BACKUP_CONFIG_PATH)
     return cfg.get('version', 'unknown')

@@ -1,5 +1,5 @@
 #!/bin/bash
-# ccd – list/view OpenVPN CCD files
+# ccd – list/view/append OpenVPN CCD files
 
 CCD_DIR="/etc/openvpn/server/ccd"
 
@@ -43,13 +43,54 @@ view_user() {
     cat "$file"
 }
 
+append_route() {
+    local username="$1"
+    local ip="$2"
+    local file="$CCD_DIR/$username"
+
+    if [ -z "$username" ] || [ -z "$ip" ]; then
+        echo "Usage: ccd --append <username> <ip>" >&2
+        exit 1
+    fi
+
+    if [ ! -f "$file" ]; then
+        echo "Error: User CCD file not found: $file" >&2
+        exit 1
+    fi
+
+    # Determine netmask: if last octet is 0 -> /24, else /32
+    local netmask
+    if [[ "$ip" =~ \.0$ ]]; then
+        netmask="255.255.255.0"
+    else
+        netmask="255.255.255.255"
+    fi
+
+    local route_line="push \"route $ip $netmask\""
+
+    # Check if already exists
+    if grep -qF "$route_line" "$file"; then
+        echo "Route already exists in $username: $route_line"
+        exit 0
+    fi
+
+    echo "$route_line" >> "$file"
+    echo "Appended to $username: $route_line"
+}
+
 case "$1" in
     -h|--help)
-        echo "Usage: ccd [NUMBER|USERNAME]"
+        echo "Usage: ccd [OPTION] [ARGUMENTS]"
         echo ""
-        echo "Without arguments: list all users with their IPs"
-        echo "With NUMBER: show CCD file for Nth user"
-        echo "With USERNAME: show CCD file for that user"
+        echo "Options:"
+        echo "  (no args)                 List all users with their IPs"
+        echo "  NUMBER                    Show CCD file for Nth user"
+        echo "  USERNAME                  Show CCD file for that user"
+        echo "  -a, --append USER IP      Append route to USER's CCD file"
+        echo "  -h, --help                Show this help"
+        ;;
+    -a|--append)
+        append_route "$2" "$3"
         ;;
     "")
         list_users
@@ -58,4 +99,3 @@ case "$1" in
         view_user "$1"
         ;;
 esac
-
