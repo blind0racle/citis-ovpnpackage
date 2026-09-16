@@ -18,7 +18,7 @@ help:
 install: check-root
 	@echo "Installing covpn to $(INSTALL_DIR) ..."
 	mkdir -p $(INSTALL_DIR)
-	cp -v covpn.py covpn_config.py covpn_env.py covpn_add.py covpn_ren.py covpn_regenerate covpn_info.py $(INSTALL_DIR)/
+	cp -v covpn.py covpn_config.py covpn_env.py covpn_add.py covpn_ren.py covpn_regenerate.py covpn_info.py $(INSTALL_DIR)/
 	chmod +x $(INSTALL_DIR)/covpn.py
 	ln -sf $(INSTALL_DIR)/covpn.py $(BIN_LINK)
 	@echo "Symlink created: $(BIN_LINK) -> $(INSTALL_DIR)/covpn.py"
